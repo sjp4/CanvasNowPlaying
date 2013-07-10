@@ -102,7 +102,10 @@ public class NowPlayingPlugin extends PebbleCanvasPlugin {
 		current_track.artist = prefs.getString(MASKS[MASK_ARTIST], null);
 		current_track.title = prefs.getString(MASKS[MASK_TITLE], null);
 		current_track.album = prefs.getString(MASKS[MASK_ALBUM], null);
-		current_track.album_art_uri = Uri.parse(prefs.getString(PREF_ART, null));
+		String uri = prefs.getString(PREF_ART, null);
+		if (uri != null) {
+			current_track.album_art_uri = Uri.parse(uri);
+		}
 		Log.i(LOG_TAG, "loaded artist = " + current_track.artist + " title = "
 				 + current_track.title + " album = " + current_track.album + " art = " + current_track.album_art_uri);
 	}
@@ -112,7 +115,13 @@ public class NowPlayingPlugin extends PebbleCanvasPlugin {
 		prefs.edit().putString(MASKS[MASK_ARTIST], current_track.artist).commit();
 		prefs.edit().putString(MASKS[MASK_TITLE], current_track.title).commit();
 		prefs.edit().putString(MASKS[MASK_ALBUM], current_track.album).commit();
-		prefs.edit().putString(PREF_ART, current_track.album_art_uri.toString()).commit();
+		String art;
+		if (current_track.album_art_uri == null) {
+			art = null;
+		} else {
+			art = current_track.album_art_uri.toString();
+		}
+		prefs.edit().putString(PREF_ART, art).commit();
 	}
 
 	// send bitmap value to canvas when requested
