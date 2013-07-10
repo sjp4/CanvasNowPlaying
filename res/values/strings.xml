@@ -1,0 +1,13 @@
+<resources>
+
+    <string name="app_name">Canvas for Pebble: Now Playing Plugin</string>
+    <string name="plugin_name_now_playing">Now Playing</string>
+    <string name="plugin_name_album_art">Album Art</string>
+
+    <string-array name="format_mask_descs">
+        <item>Artist</item>
+        <item>Title</item>
+        <item>Album</item>
+    </string-array>
+
+</resources>
