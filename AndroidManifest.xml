@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.pennas.canvasnowplayingplugin"
-    android:versionCode="2"
-    android:versionName="1.1" >
+    android:versionCode="3"
+    android:versionName="1.2" >
 
     <uses-sdk
         android:minSdkVersion="9"
@@ -29,6 +29,7 @@
             <intent-filter>
                 <action android:name="com.android.music.playstatechanged" />
                 <action android:name="com.android.music.metachanged" />
+                <action android:name="com.sec.android.app.music.metachanged" />
             </intent-filter>
         </receiver>
         
