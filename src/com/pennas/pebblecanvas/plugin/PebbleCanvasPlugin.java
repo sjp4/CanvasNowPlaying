@@ -5,6 +5,8 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -16,7 +18,7 @@ import android.graphics.Bitmap;
 import android.util.Log;
 
 public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
-	private static final int INTERFACE_VERSION = 1;
+	private static final int INTERFACE_VERSION = 2;
 	
 	private static final String ABS_LOG_TAG = "CANV_PLUG";
 	// canvas -> plugins
@@ -26,6 +28,7 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 	public static final String CANVAS_ACTION_DEFINITION = "com.pennas.pebblecanvas.plugin.DEFINITION";
 	public static final String CANVAS_ACTION_UPDATE = "com.pennas.pebblecanvas.plugin.UPDATE";
 	public static final String CANVAS_ACTION_NOTIFY_UPDATE = "com.pennas.pebblecanvas.plugin.NOTIFY_UPDATE";
+	public static final String CANVAS_ACTION_SHOW_SCREEN = "com.pennas.pebblecanvas.plugin.SHOW_SCREEN";
 	
 	// definition fields
 	public static final String CANVAS_DEFINITION_ID = "ID";
@@ -38,11 +41,14 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 	public static final String CANVAS_DEFINITION_FORMAT_DESCS = "FORMAT_DESCS";
 	public static final String CANVAS_DEFINITION_FORMAT_EXAMPLES = "FORMAT_EXAMPLES";
 	public static final String CANVAS_DEFINITION_DEFAULT_FORMAT_STRING = "FORMAT_DEFAULT";
+	public static final String CANVAS_DEFINITION_PARAMS_DESC = "PARAMS_DESC";
 	
 	// value fields
 	public static final String CANVAS_VALUE_FORMAT_MASKS = "FORMAT_MASK";
 	public static final String CANVAS_VALUE_FORMAT_MASK_VALUES = "MASK_VALUES";
 	public static final String CANVAS_VALUE_IMAGE = "IMAGE";
+	public static final String CANVAS_VALUE_SCREEN_NAME = "SCREEN_NAME";
+	public static final String CANVAS_VALUE_IMAGE_PARAMS = "IMAGE_PARAMS";
 	
 	// plugin types
 	public static final int TYPE_TEXT = 1;
@@ -55,6 +61,9 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 	private static ArrayList<PluginDefinition> stored_defs;
 	
 	@Override
+	/**
+	 * BroadcastReceiver which will receive messages from Canvas, and process them before calling the plugin callback methods as required
+	 */
 	public final void onReceive(Context context, Intent intent) {
 		//Log.i(ABS_LOG_TAG, "onReceive: " + intent.getAction());
 		// Canvas requested definitions - send them
@@ -100,7 +109,8 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 						
 						send_value_string(def_id, format_masks, context);
 					} else if (def instanceof ImagePluginDefinition) {
-						send_value_image(def_id, context);
+						String params = intent.getStringExtra(CANVAS_VALUE_IMAGE_PARAMS);
+						send_value_image(def_id, context, params);
 					}
 					break;
 				} // def id
@@ -115,6 +125,7 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 		intent.putExtra(CANVAS_DEFINITION_NAME, def.name);
 		intent.putExtra(CANVAS_DEFINITION_PACKAGE, context.getPackageName());
 		intent.putExtra(CANVAS_DEFINITION_INTERFACE_VERSION, INTERFACE_VERSION);
+		intent.putExtra(CANVAS_DEFINITION_PARAMS_DESC, def.params_description);
 		
 		PackageManager manager = context.getPackageManager();
 		PackageInfo info;
@@ -139,11 +150,18 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
         context.sendBroadcast(intent);
 	}
 	
+	private static final Pattern pat_param = Pattern.compile("(%.+?)#(.+?)#");
 	private final void send_value_string(int def_id, ArrayList<String> format_masks, Context context) {
 		Log.i(ABS_LOG_TAG, "send_value_string: " + def_id);
 		ArrayList<String> value_items = new ArrayList<String>();
 		for (String mask : format_masks) {
-			value_items.add(get_format_mask_value(def_id, mask, context));
+			String params = null;
+			Matcher match = pat_param.matcher(mask);
+			if (match.find()) {
+				mask = match.group(1);
+				params = match.group(2);
+			}
+			value_items.add(get_format_mask_value(def_id, mask, context, params));
 		}
 		
 		final Intent intent = new Intent(CANVAS_ACTION_UPDATE);
@@ -159,12 +177,12 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 	private static final int NUM_FILES = 5;
 	private static final String FILENAME_PREFIX = "img_tmp_";
 	
-	private final void send_value_image(int def_id, Context context) {
+	private final void send_value_image(int def_id, Context context, String params) {
 		final Intent intent = new Intent(CANVAS_ACTION_UPDATE);
 		intent.putExtra(CANVAS_DEFINITION_ID, def_id);
 		intent.putExtra(CANVAS_DEFINITION_PACKAGE, context.getPackageName());
 		intent.setClassName(PEBBLE_CANVAS_PACKAGE, PEBBLE_CANVAS_PLUGIN_RECEIVER);
-        Bitmap b = get_bitmap_value(def_id, context);
+        Bitmap b = get_bitmap_value(def_id, context, params);
 		
 		filename_i++;
 		if (filename_i >= NUM_FILES) {
@@ -200,22 +218,66 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
 		}
 	}
 	
+	/**
+	 * Abstract class representing a plugin definition. Many of these may be provided by a single plugin application (or just one)
+	 * 
+	 * Plugins must define each PluginDefinition using a concrete implementation: either {@link TextPluginDefinition} or {@link ImagePluginDefinition}
+	 */
 	public abstract class PluginDefinition {
-		public int id; // identifier (to separate multiple plugins from the same app)
-		public String name;// display name
+		/**
+		 * Identifier (to uniquely identify multiple plugins from the same app)
+		 */
+		public int id;
+		/**
+		 * Name, as presented to the Canvas user in the Plugins dropdown
+		 */
+		public String name;
+		/**
+		 * Optional (leave null if not required). Description of parameter for user to enter in Canvas editor for this plugin
+		 */
+		public String params_description;
 	}
 	
+	/**
+	 * Class representing a text plugin definition.
+	 * 
+	 * format_mask_examples is optional, but all other fields are mandatory
+	 * 
+	 * All ArrayList fields should contain the same number of elements
+	 */
 	public final class TextPluginDefinition extends PluginDefinition {
-		public ArrayList<String> format_masks; // list of format masks
-		public ArrayList<String> format_mask_descriptions; // description of each format mask
-		public ArrayList<String> format_mask_examples; // example content of each format mask
+		/**
+		 * List of format masks provided by the plugin, each in the format %m
+		 */
+		public ArrayList<String> format_masks;
+		/**
+		 * Description of format masks provided by the plugin, to be presented to user iun the format mask editor dialog
+		 */
+		public ArrayList<String> format_mask_descriptions;
+		/**
+		 * Optional: initial value for each format mask, to be used by Canvas if no data has been received yet for each mask
+		 */
+		public ArrayList<String> format_mask_examples;
+		/**
+		 * Default format string to be populated in Canvas editor when the user creates a layer using this plugin.
+		 * May use more than one format mask and static text, e.g. "SMS: %S Missed: %M"
+		 */
 		public String default_format_string;
 	}
 	
+	/**
+	 * Abstract class representing an image plugin definition.
+	 */
 	public final class ImagePluginDefinition extends PluginDefinition {
-		//
+		// no extra fields
 	}
 	
+	/**
+	 * Notify Canvas that updates are available for the specified plugin def ID
+	 * 
+	 * @param def_id Plugin ID for which update is available
+	 * @param context Calling context
+	 */
 	public static final void notify_canvas_updates_available(int def_id, Context context) {
 		Log.i(ABS_LOG_TAG, "notify_canvas_updates_available: " + def_id);
 		if (context == null) return;
@@ -227,14 +289,54 @@ public abstract class PebbleCanvasPlugin extends BroadcastReceiver {
         context.sendBroadcast(intent);
 	}
 	
+	/**
+	 * Request that Canvas displays this screen on the connected Pebble
+	 * 
+	 * @param screen_name Name of the screen to show
+	 * @param context Calling context
+	 */
+	public static final void show_screen(String screen_name, Context context) {
+		Log.i(ABS_LOG_TAG, "show_screen: '" + screen_name + "'");
+		if (context == null) return;
+		if ( (screen_name == null) || (screen_name.length() == 0) ) return;
+		
+		final Intent intent = new Intent(CANVAS_ACTION_SHOW_SCREEN);
+		intent.putExtra(CANVAS_VALUE_SCREEN_NAME, screen_name);
+		intent.setClassName(PEBBLE_CANVAS_PACKAGE, PEBBLE_CANVAS_PLUGIN_RECEIVER);
+        context.sendBroadcast(intent);
+	}
+	
 	//
 	// methods which must be overridden in subclass to provide plugin functionality:-
 	//
 	
-	// return a list of plugin definitions provided by this app. maybe 1
+	/**
+	 * Canvas requests definitions from this plugin
+	 * 
+	 * @param context Calling context
+	 * 
+	 * @return A list of {@link PluginDefinition} instances (may only be one)
+	 */
 	protected abstract ArrayList<PluginDefinition> get_plugin_definitions(Context context);
-	// return the current value for this single format mask item
-	protected abstract String get_format_mask_value(int def_id, String format_mask, Context context);
-	// return the current bitmap for this plugin
-	protected abstract Bitmap get_bitmap_value(int def_id, Context context);
+	/**
+	 * Canvas requests the current text value for a specific format mask
+	 * 
+	 * @param def_id ID of plugin definition which is being queried
+	 * @param format_mask Mask to return current value of
+	 * @param context Calling context
+	 * @param param User-entered parameter (if specified by plugin definition). Plugins should deal gracefully with this being null/empty
+	 * 
+	 * @return The current String value of the format mask
+	 */
+	protected abstract String get_format_mask_value(int def_id, String format_mask, Context context, String param);
+	/**
+	 * Canvas requests the current bitmap for this plugin
+	 * 
+	 * @param def_id ID of plugin definition which is being queried
+	 * @param context Calling context
+	 * @param param User-entered parameter (if specified by plugin definition). Plugins should deal gracefully with this being null/empty
+	 * 
+	 * @return The current image value (Bitmap) of the format mask
+	 */
+	protected abstract Bitmap get_bitmap_value(int def_id, Context context, String param);
 }
