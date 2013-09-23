@@ -69,7 +69,7 @@ public class NowPlayingPlugin extends PebbleCanvasPlugin {
 	
 	// send current text values to canvas when requested
 	@Override
-	protected String get_format_mask_value(int def_id, String format_mask, Context context) {
+	protected String get_format_mask_value(int def_id, String format_mask, Context context, String param) {
 		//Log.i(LOG_TAG, "get_format_mask_value def_id = " + def_id + " format_mask = '" + format_mask + "'");
 		if (process_just_started) {
 			Log.i(LOG_TAG, "process_just_started");
@@ -126,7 +126,7 @@ public class NowPlayingPlugin extends PebbleCanvasPlugin {
 
 	// send bitmap value to canvas when requested
 	@Override
-	protected Bitmap get_bitmap_value(int def_id, Context context) {
+	protected Bitmap get_bitmap_value(int def_id, Context context, String param) {
 		Log.i(LOG_TAG, "get_bitmap_value def_id = " + def_id);
 		
 		if (def_id == ID_ALBUM_ART){
